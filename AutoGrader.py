@@ -1,179 +1,150 @@
 import argparse
 import re
+import glob
 import os
 import time
 import zipfile
 import subprocess
+import sys
+
+providedInputFiles = ['./train1.csv', './test1.csv', '10']
+providedOutputSampleFiles = ['out01.txt', 'out11.txt', 'out21.txt', 'out31.txt']
+privateInputFiles = ['./train2.csv', './test2.csv', '20']
+privateOutputSampleFiles = ['out02.txt', 'out12.txt', 'out22.txt', 'out32.txt']
 
 '''
-Overall program setup.
-
-#Input args specified:
-A) Directory holding all zip files (Assumed to be 'assignments/')
-B) Assignment file name to grade within each zip (aka 'hw6_p3.txt')
-C) Script to use for grading (aka 'HW6_P3_SCRIPT.lcs')
-D) Grading rubric file? Each line represents a line that should be in the autograder output.
-
-1) Loop through each zip file in a specified directory
-	2) Open each zip and get the specified file to grade (Should be a file convertable to its .obj form)
-	3) If a text file,
-		3a) Append a newline to the file, and write with extension '.bin'
-		3b) Start subprocess, and convert file from .bin to .obj (.obj file remains in the 'assignments/' folder
-	4) If an assembly file,
-		4a) Write assembly file to the 'assignments/' folder.
-
-	5) Start subprocess, and run LC3 sim code with specified script.
-	6) Retrieve output from subprocess pipe.
-	7) Analyze pipe for specific lines in the grading rubric file.
-	8) Output NET_ID name, pass into file PASS.txt, fail into file FAIL.txt
-	9) Output NET_ID.txt program output for students that failed.
+Output file format:
+#If success running all parts of the program.
+<Student Name>, <Total>, <Provided Mode 0 score>, <Provided Mode 1 score>, <Provided Mode 2 score>, <Provided Mode 3 score>,
+	<Private Mode 0 score>, <Private Mode 1 score>, <Private Mode 2 score>, <Private Mode 3 score>, additional comments on failures
+#If failure in opening or finding files, Total = -1.
+<Student Name>, <Total>, additional comments on failure
 
 '''
-def main(args):
+def main():
 	print('Running AutoGrader...')
-	#Retrieve the grading rubric string list.
-	rubricList = []
-	with open(args.RubricFile) as myfile:
-		for line in myfile:
-			rubricList.append(line.strip())
-
 	#Grade each zip file submission.
 	startTime = time.time()
 	assignmentFile = None
 	zipFileList = sorted(os.listdir('./assignments'))
-	zipFileList = zipFileList[args.StartIndex:]
-	iteration = args.StartIndex
+	iteration = 0
+	with open('./Results.txt', 'w') as f:
 
-	for zipFileName in zipFileList:
-		iteration += 1
-		if '.zip' not in zipFileName:
-			#If file isn't a zip file, continue.
-			print('Iteration: ' + str(iteration) + ' Non zip file')
-			continue
-		else:
-			#studentName = zipFileName.split('-')[2].strip()
-			#with open('p4_submitted.txt', 'a') as myfile:
-			#	myfile.write(studentName + '\n')
-			#continue
-			studentName = zipFileName.split('-')[2].strip()
+		for zipFileName in zipFileList:
+			iteration += 1
+			if '.zip' not in zipFileName:
+				#If file isn't a zip file, continue.
+				continue
+			else:
+				#Get the Student Name from the file name. (Andrew Petti_136409_assignsubmission_file_apetti-HW2-P3.zip)
+				studentName = zipFileName.split('_')[0].strip()
+				print('Iteration: ' + str(iteration) + ', Grading: ' + studentName)
 
-			print(zipFileName)
-			netID = zipFileName.split('-')[-1].strip()
-			studentName = zipFileName.split('-')[2].strip()
-			print(zipFileName)
-			netID = netID.split('_')[0]
-			print('Iteration: ' + str(iteration) + ', Grading: ' + netID)
-			#If file to read is a text file, then extract from the zip file, and write to 'assignments/' dir.
-			if '.txt' in args.AssignmentName:
 				#Read zip file
 				try:
 					with zipfile.ZipFile('./assignments/' + zipFileName) as myzip:
 						try:
-							with myzip.open(args.AssignmentName) as myfile:
-								assignmentFile = myfile.readlines()
+							myzip.extractall(path='./workingdir/')
 						except:
 							#Print student netID, failure message, and continue to next student.
-							printFailure(netID, studentName, 'Incorrect assignment name, or missing assignment.')
+							printFailure(studentName, 'Error extracting files from zip.', f)
 							continue
 				except:
-					printFailure(netID, studentName, 'Bad Zip File Structure.')
+					printFailure(studentName, 'Error opening zip.')
 					continue
-				#If option to add breakpoint to script file is true, then find Halt command in binary file, and
-				if args.AddFinalBreak == 'y':
-					#Find location of Halt address in the binary file.
-					startProgramAddress = 16384
-					offset = -1
-					for line in assignmentFile:
-						if line.decode("utf-8").split(';')[0].strip() == '\n' or line.decode("utf-8").split(';')[0].strip() == '':
-							continue
-						binaryList = line.decode("utf-8").split(';')[0].strip().split(' ')
-						binary = ''
-						for term in binaryList:
-							binary += term
-						if binary == '1111000000100101':
-							#Halt command found
-							break
-						else:
-							#Continue to next address.
-							offset += 1
-					#Replace the {breakpoint} text in the script file with 'break set <startProgramAddress + offset>'
-					with open(args.GradeScriptFile, 'r') as myfile:
-						fileContents = myfile.read()
-					hexAddr = 'x' + ((4 - len(hex(startProgramAddress + offset)[2:]))*'0') + hex(startProgramAddress + offset)[2:]
-					fileContents = fileContents.replace('{breakpoint}', 'break set ' + hexAddr)
-					with open('copy_' + args.GradeScriptFile, 'w') as myfile:
-						for line in fileContents:
-							myfile.write(line)
 
-				#Add newline, and write assignmentFile as '.bin' to assignments folder.
-				assignmentFile.append(b'\n')
-				with open('./assignments/' + args.AssignmentName.split('.')[0] + '.bin', 'w') as myfile:
-					for line in assignmentFile:
-						myfile.write(line.decode("utf-8"))
-				#Start subprocess to run the lc3convert program.
-				binFileName = args.AssignmentName.split('.')[0] + '.bin'
+
+				#Grade provided data operation.
+				os.chdir('./workingdir/')
+				providedGradeString, providedComments = gradeProgram(providedInputFiles, providedOutputSampleFiles)
+				#Grade private data operation.
+				privateGradeString, privateComments = gradeProgram(privateInputFiles, privateOutputSampleFiles)
+				os.chdir('..')
+
+				#Output graded results to the results file.
+				totalScore = 0
+				for score in providedGradeString.split(','):
+					if score == '':
+						continue
+					totalScore += float(score)
+				for score in privateGradeString.split(','):
+					if score == '':
+						continue
+					totalScore += float(score)
+				f.write(studentName + ',' + str(totalScore) + ',' + providedGradeString + privateGradeString + providedComments + '/' + privateComments + '\n')
+
+				#Clean up created .bin and .obj files in 'assignments/' before moving on.
 				try:
-					processResult = subprocess.check_output(["./lc3toolsbin/lc3convert", "-b2", "./assignments/" + binFileName])
+					for fl in glob.glob(r"./workingdir/*.java"):
+						# Do what you want with the file
+						os.remove(fl)
+					for fl in glob.glob(r"./workingdir/*.class"):
+						# Do what you want with the file
+						os.remove(fl)
 				except:
-					printFailure(netID, studentName, 'Incorrect assignment file content or structure')
-					continue
-
-			#Run subprocess to simulate results.
-			try:
-				if args.AddFinalBreak == 'y':
-					simulationOutput = subprocess.check_output(["java", "-jar", "PennSim.jar", "-t", "-s", 'copy_' + args.GradeScriptFile])
-					simulationOutput = simulationOutput.decode("utf-8")
-				else:
-					simulationOutput = subprocess.check_output(["java", "-jar", "PennSim.jar", "-t", "-s", args.GradeScriptFile])
-					simulationOutput = simulationOutput.decode("utf-8")
-			except:
-				printFailure(netID, studentName, 'Failure running program in PennSim.')
-				continue
-			#Use rubric file to check if all necessary lines are in the output from the LC3 simulator process.
-			gradePass = True
-			for line in rubricList:
-				if line.strip == '' or line.strip == '\n':
-					continue
-				if line not in simulationOutput:
-					gradePass = False
-					break
-			if gradePass:
-				with open("./results/PASS.txt", "a") as myfile:
-					myfile.write(netID + ", " + studentName + "\n")
-			else:
-				printFailure(netID, studentName, 'Failed rubric.')
-				with open("./results/rubric_fail/" + netID + "_err.txt", "w") as myfile:
-					myfile.writelines(simulationOutput)
-
-			#Clean up created .bin and .obj files in 'assignments/' before moving on.
-			try:
-				os.remove('./assignments/' + args.AssignmentName.split('.')[0] + '.bin')
-				os.remove('./assignments/' + args.AssignmentName.split('.')[0] + '.obj')
-			except:
-				print('Issue cleaning up files on iteration, continuing...')
+					print('Issue cleaning up files on iteration, continuing...')
 
 	endTime = time.time()
 	print('Total time to run: %.2f minutes.' % ((endTime - startTime)/60))
 
+def gradeProgram(inputFiles, outputFiles):
+	gradeString = ''
+	errorString = ''
+
+	#Compile student code.
+	try:
+		processResult = subprocess.check_output(["javac *.java"], shell=True)
+	except:
+		errorString = '/Unable to compile java code'
+		return '0,', errorString
+
+	#Loop through all of the sample output files, read the text, run the student program, compare resulting output, and grade.
+	mode = -1
+	for file in outputFiles:
+		mode += 1
+		actualOutput = ''
+		with open('../example_output/' + file) as f:
+			actualOutput = f.readlines()
+
+		#Run program and test.
+		try:
+			processResult = subprocess.check_output(['java HW3 ' + str(mode) + ' ' + inputFiles[0] + ' ' + inputFiles[1] +' ' + inputFiles[2]],
+													shell=True, universal_newlines=True)
+			processResult = processResult.split('\n')
+		except:
+			gradeString += '0,'
+			errorString += '/(' + file + ')' + 'Error running \'java HW3\''
+			print(sys.exc_info()[0])
+			continue
+
+		#Check output result, compare line by line.
+		initialTotal = 8.25
+		kUnmatchingOutputs = 0
+		for i in range(0, len(actualOutput)):
+			if processResult[i] != actualOutput[i].strip():
+				initialTotal -= .5
+				kUnmatchingOutputs += 1
+			if initialTotal < 0:
+				initialTotal = 0
+				break
+		gradeString += str(initialTotal) + ','
+		if kUnmatchingOutputs > 0:
+			errorString += '/(' + file + ')' + str(kUnmatchingOutputs) + ' non-matching outputs'
+
+	#Return the 4 part, comma separated grades, and any error comments
+	return gradeString, errorString
+
+
 '''
 Print failure of student to file.
 '''
-def printFailure(netID, studentID, errMsg):
+def printFailure(studentID, errMsg, f):
 	#Print netID to failure file, along with error message if necessary.
-	with open("./results/FAIL.txt", "a") as myfile:
-		myfile.write(netID + ", " + studentID + ', ' + errMsg + "\n")
+	f.write(studentID + ',0,' + errMsg + "\n")
 
 
 if __name__ == '__main__':
-	#Parse command line arguments
-	parser = argparse.ArgumentParser(description='LC3 AutoGrader.')
-	parser.add_argument('AssignmentName', metavar='f1', type=str, help="AssignmentName")
-	parser.add_argument('GradeScriptFile', metavar='f2', type=str, help="GradeScriptFile")
-	parser.add_argument('RubricFile', metavar='f3', type=str, help="RubricFile")
-	parser.add_argument('AddFinalBreak', metavar='b', type=str, help="Add a break point to the lcs script at the final binary Halt command? (y/n)")
-	parser.add_argument('StartIndex', metavar='s', type=int, help="File address to start checking at")
-	args = parser.parse_args()
-	main(args)
+	main()
 
 
 
