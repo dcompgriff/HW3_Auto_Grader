@@ -62,7 +62,7 @@ def main():
 				try:
 					os.mkdir('./Results/StudentOutputs/' + studentName)
 				except FileExistsError:
-					pass
+					continue
 
 				#Grade provided data operation.
 				os.chdir('./workingdir/')
