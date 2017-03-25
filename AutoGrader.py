@@ -116,12 +116,12 @@ def gradeProgram(studentName, baseGradeScore, inputFiles, outputFiles):
 		#Run program and test.
 		try:
 			processResult = subprocess.check_output(['java HW3 ' + str(mode) + ' ' + inputFiles[0] + ' ' + inputFiles[1] +' ' + inputFiles[2]],
-													shell=True, universal_newlines=True, timeout=60)
+													shell=True, universal_newlines=True, timeout=10)
 			processResult = processResult.split('\n')
 		except:
 			gradeString += '0,'
 			errorString += '/(' + file + ')' + 'Error running \'java HW3\''
-			print(sys.exc_info()[0])
+			#print(sys.exc_info()[0])
 			continue
 
 		#Write student output to file.
