@@ -36,7 +36,11 @@ def main(args):
                 #Extract all files.
                 myzip.extractall(args.path + '/extracted/')
             #Initialize os directory for walking over folders.
-            entryList = os.listdir(args.path + '/extracted/')
+            try:
+                entryList = os.listdir(args.path + '/extracted/')
+            except:
+                print('Error extracting files in interation %s. Continuing...\n'%(iteration))
+                continue
             for entry in entryList:
                 if os.path.isdir(args.path + '/extracted/' + entry +'/'):
                     fileList = os.listdir(args.path + '/extracted/' + entry)
