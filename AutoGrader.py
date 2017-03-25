@@ -28,7 +28,7 @@ def main():
 	assignmentFile = None
 	zipFileList = sorted(os.listdir('./assignments'))
 	iteration = 0
-	with open('./Results.txt', 'w') as f:
+	with open('./Results/Results.txt', 'w') as f:
 
 		for zipFileName in zipFileList:
 			iteration += 1
@@ -54,11 +54,17 @@ def main():
 					continue
 
 
+				#Make an output dir for student's program outputs.
+				try:
+					os.mkdir('./Results/StudentOutputs/' + studentName)
+				except FileExistsError:
+					pass
+
 				#Grade provided data operation.
 				os.chdir('./workingdir/')
-				providedGradeString, providedComments = gradeProgram(providedInputFiles, providedOutputSampleFiles)
+				providedGradeString, providedComments = gradeProgram(studentName, providedInputFiles, providedOutputSampleFiles)
 				#Grade private data operation.
-				privateGradeString, privateComments = gradeProgram(privateInputFiles, privateOutputSampleFiles)
+				privateGradeString, privateComments = gradeProgram(studentName, privateInputFiles, privateOutputSampleFiles)
 				os.chdir('..')
 
 				#Output graded results to the results file.
@@ -87,7 +93,7 @@ def main():
 	endTime = time.time()
 	print('Total time to run: %.2f minutes.' % ((endTime - startTime)/60))
 
-def gradeProgram(inputFiles, outputFiles):
+def gradeProgram(studentName, inputFiles, outputFiles):
 	gradeString = ''
 	errorString = ''
 
@@ -116,6 +122,11 @@ def gradeProgram(inputFiles, outputFiles):
 			errorString += '/(' + file + ')' + 'Error running \'java HW3\''
 			print(sys.exc_info()[0])
 			continue
+
+		#Write student output to file.
+		with open('../Results/StudentOutputs/' + studentName + '/' + file, 'w') as f:
+			for line in processResult:
+				f.write(line + '\n')
 
 		#Check output result, compare line by line.
 		initialTotal = 8.25
